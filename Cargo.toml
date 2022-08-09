@@ -17,4 +17,3 @@ debug = 0
 actix-web = "4.1.0"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
-reqwest = { version = "0.11", features = ["blocking"] }

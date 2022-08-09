@@ -1,7 +1,5 @@
-use std::fs::File;
 use actix_web::{post, get, web, App, HttpServer, Result, Responder};
 use serde::{Deserialize,Serialize};
-use tokio::fs;
 use crate::assets::client::api::{delete_client, read_key};
 
 mod assets;
@@ -9,6 +7,11 @@ mod assets;
 #[derive(Deserialize)]
 struct Info {
     ip: String,
+}
+
+#[derive(Deserialize)]
+struct PKey {
+    key: String,
 }
 
 #[derive(Deserialize,Serialize)]
@@ -19,21 +22,20 @@ struct Key {
 
 #[post("/add_key")]
 async fn add(info: web::Json<Info> ) -> Result<impl Responder> {
-    File::create(format!("publickey_{}", info.ip).as_str()).expect("Error create file pulibckey");
-    File::create(format!("privatekey_{}", info.ip).as_str()).expect("Error create file privatekey");
+    if info.ip == "" {
+        panic!("ip is empty!");
+    }
     let (pb_key,pt_key) = read_key(info.ip.as_str()).await;
     let keys = Key{
         private_key:pt_key,
         public_key:pb_key
     };
-    fs::remove_file(format!("publickey_{}",info.ip)).await.expect("Can`t remove file");
-    fs::remove_file(format!("privatekey_{}",info.ip)).await.expect("Can`t remove file");
     Ok(web::Json(keys))
 }
 
 #[get("/delete_key")]
-async fn delete(info: web::Json<Info> )-> Result<String>{
-    delete_client(info.ip.as_str());
+async fn delete(info: web::Json<PKey> )-> Result<String>{
+    delete_client(info.key.clone()).await;
     Ok(String::from("Удалено!"))
 }
 

@@ -1,68 +1,52 @@
 pub mod api{
-    use std::{process::Command, str};
-    use std::fs::File;
-    use std::io::Read;
+    use std::{fs, str};
+    use tokio::process::Command;
 
     pub async fn generate_private_key(ip:&str) -> String{
-        let file_name = format!("privatekey_{}",ip);
-        let gen_private = format!("wg genkey > {}",file_name);
-        Command::new("bash")
-            .arg("-c")
-            .arg(gen_private.as_str())
-            .spawn().ok().expect("Error generate private_key");
-        file_name
+        let output = Command::new("bash")
+            .args(&["-c",format!("wg genkey > privatekey_{}  && cat privatekey_{}",ip,ip).as_str()])
+            .output().await
+            .expect("Failed to execute command");
+        String::from_utf8_lossy(output.stdout.as_slice()).to_string()
     }
 
-    pub async fn generate_public_key(ip:&str,private_key:&str){
-        let public_key = format!("publickey_{}",ip);
-        let gen_public = format!("wg pubkey < {} > {}",private_key,public_key);
-        Command::new("bash")
-            .arg("-c")
-            .arg(gen_public.as_str())
-            .spawn().ok().expect("Error generate public key");
+    pub async fn generate_public_key(ip:&str) -> String{
+        let output = Command::new("bash")
+            .args(&["-c",format!("wg pubkey < privatekey_{} > publickey_{}  && cat publickey_{}",ip,ip,ip).as_str()])
+            .output().await
+            .expect("Failed to execute command");
+        String::from_utf8_lossy(output.stdout.as_slice()).to_string()
     }
 
-    pub fn add_client(pb_key: &str, ip:&str){
+    pub async fn add_client(pb_key: &String, ip:&str){
         Command::new("bash")
             .arg("-c")
-            .arg(format!("wg set wg0 peer {} {}",pb_key,ip))
-            .spawn().ok().expect("Error add client");
-    }
-
-    pub fn save_client(){
+            .arg(format!("wg set wg0 peer {} allowed-ips {}/32",pb_key.trim(),ip))
+            .output().await.expect("Error add client");
         Command::new("bash")
             .arg("-c")
             .arg("wg-quick save /etc/wireguard/wg0.conf")
-            .spawn().ok().expect("Error save client");
+            .output().await.expect("Error save!");
     }
 
-    pub fn delete_client(pb_key:&str){
+    pub async fn delete_client(pb_key:String){
         Command::new("bash")
             .arg("-c")
-            .arg("wg set wg0 peer")
-            .arg(pb_key)
-            .arg("remove")
-            .spawn().ok().expect("Error remove client");
-
+            .arg(format!("wg set wg0 peer {} remove",pb_key))
+            .output().await.expect("Error wg set!");
         Command::new("bash")
             .arg("-c")
             .arg("wg-quick save /etc/wireguard/wg0.conf")
-            .spawn().ok().expect("Error save client after remove");
+            .output().await.expect("Error save");
     }
 
     pub async fn read_key(ip:&str)->(String,String) {
-        let priv_key = generate_private_key(ip).await;
-        generate_public_key(ip,priv_key.as_str()).await;
-
-        let mut private_key = String::new();
-        let mut public_key = String::new();
-
-        let mut file = File::open(format!("privatekey_{}",ip).as_str()).expect("Error find privatekey file");
-        file.read_to_string(&mut private_key).unwrap();
-        let mut file = File::open(format!("publickey_{}",ip).as_str() ).expect("Error find publickey file");
-        file.read_to_string(&mut public_key).unwrap();
-        add_client(public_key.as_str(), ip);
-        save_client();
+        let private_key  = generate_private_key(ip).await;
+        let public_key = generate_public_key(ip).await;
+        add_client(&public_key, ip).await;
+        fs::remove_file(format!("publickey_{}",ip).as_str()).expect("Error remove file");
+        fs::remove_file(format!("privatekey_{}",ip).as_str()).expect("Error remove file");
+        println!("Ключи отданы");
         (private_key.trim().parse().unwrap(), public_key.trim().parse().unwrap())
     }
 }
